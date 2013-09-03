@@ -5,6 +5,7 @@ require 'set'
 
 require 'learning_suite/iclicker'
 require 'learning_suite/gradebook/student'
+require 'learning_suite/grades'
 
 module LearningSuite
 
@@ -31,11 +32,20 @@ module LearningSuite
       end
     end
 
+    # takes an array of header items and returns the 3 key indices
+    def first_last_netid_indices(header)
+      [/First|Preferred/i, /Last/i, /Net ID/i].map do |re|
+        header.index {|ar| re.match(ar) }
+      end
+    end
+
     def csv_to_students(csv)
       rows = CSV.read(csv)
       header = rows.shift
+      (frst_idx, lst_idx, netid_idx) = first_last_netid_indices(header)
+
       rows.map do |row|
-        student = Student.new( row[FIRST], row[LAST], row[NETID] )
+        student = Student.new( row[frst_idx], row[lst_idx], row[netid_idx] )
         student.grades = Hash[ header[3..-1].zip( row[3..-1] ).map.to_a ]
         student
       end
@@ -72,20 +82,38 @@ module LearningSuite
       end
     end
 
-    def curve_exam(exam_number, exams_fraction_of_score=0.6, exam_re=/Exam/i)
-      @students.each do |student| 
-        exams = student.grades.keys.select {|k| k =~ exam_re }
-        exam_grade_doublets = student.grades.select {|exam, val| !val.nil? }
-        p exam_grade_doublets.map(&:last).reduce(:+)
-        abort 'here'
+    #def curve_exam(exam_number, exams_fraction_of_score=0.6, exam_re=/Exam/i)
+      #@students.each do |student| 
+        #exams = student.grades.keys.select {|k| k =~ exam_re }
+        #exam_grade_doublets = student.grades.select {|exam, val| !val.nil? }
+        #p exam_grade_doublets.map(&:last).reduce(:+)
+        #abort 'here'
+      #end
+    #end
+
+    def class_gpa(round_up=true, add=0.0)
+      gpas = @students.map do |s| 
+        adjusted = s.final_grade_percent + add
+        adjusted = 100.0 if adjusted > 100
+        adjusted = 0 if adjusted < 0
+        LearningSuite::Grades.to_gpa(adjusted, round_up) 
       end
+        
+      gpas.reduce(:+) / @students.size
     end
 
-    def curve_final_grade!(target_gpa, type=:flat)
-      @students.each do |student|
-        p student.grades
-        abort 'here'
+    # returns the curve amount and the gpa that gives
+    def curve_final_grade(target_gpa, type=:flat, round_up=true)
+      final_grade_percent_ar = @students.map(&:final_grade_percent)
+      prev_gpa = nil
+      prev_add = nil
+      (0..20.0).step(0.1) do |add|
+        cgpa = class_gpa(round_up, add)
+        return [prev_add, prev_gpa] if cgpa > target_gpa
+        prev_gpa = cgpa
+        prev_add = add
       end
+      [nil, nil]
     end
 
     def fill_scores!(score=0.0)

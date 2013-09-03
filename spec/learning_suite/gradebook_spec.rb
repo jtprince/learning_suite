@@ -41,4 +41,20 @@ describe LearningSuite::Gradebook do
     lines[4].should == "Rudolph,Bartok,rbartok,1.0,,,,,,,,,,,,,,,,,,,,,,0.0,,,,,,,,,,,2.0,,,2.0,2.0,2.0,2.0,\n"
     File.unlink(outfile)
   end
+
+end
+
+# learning suite doesn't export final grades yet, so use official
+# gradebook.byu.edu to export this
+describe 'official Gradebook export of final grades' do
+
+  before(:all) do
+    @gbcsv = TESTFILES + "/gradebook_export_of_final_grades.csv"
+  end
+
+  it 'can curve final scores' do
+    gb = LearningSuite::Gradebook.new(@gbcsv)
+    gb.curve_final_grade(3.1, :flat)
+  end
+
 end

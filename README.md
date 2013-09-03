@@ -1,14 +1,14 @@
-= learning_suite
+# learning_suite
 
 Internal use manipulation of BYU's Learning Suite.
 
-== Examples
+## Examples
 
 Commandline:
 
     learning_suite.rb
 
-== Copyright
+## Copyright
 
 See LICENSE.txt
 

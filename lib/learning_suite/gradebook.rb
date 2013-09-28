@@ -31,12 +31,26 @@ module LearningSuite
       end
     end
 
+    # nil -> nil, '' -> nil, everything else to_f
+    def csv_to_f(val)
+      if val
+        ( val == '' ? nil : val.to_f )
+      end
+    end
+
     def csv_to_students(csv)
       rows = CSV.read(csv)
       header = rows.shift
       rows.map do |row|
         student = Student.new( row[FIRST], row[LAST], row[NETID] )
         student.grades = Hash[ header[3..-1].zip( row[3..-1] ).map.to_a ]
+
+        non_nil_grades = {}
+        student.grades.each do |k,v|
+          non_nil_grades[k] = csv_to_f(v) 
+        end
+        student.grades = non_nil_grades
+
         student
       end
     end
@@ -47,13 +61,13 @@ module LearningSuite
     end
 
     def iclicker_date_to_assignment_hash(hash_or_yamlfile)
-      d_to_a = 
+      date_to_assignment = 
         if hash_or_yamlfile.is_a?(Hash)
           hash_or_yamlfile
         else
           YAML.load_file(hash_or_yamlfile)
         end
-      d_to_a = Hash[ d_to_a.map {|k,v| [bad_date_string_to_date_obj(k), v] } ]
+      Hash[ date_to_assignment.map {|k,v| [bad_date_string_to_date_obj(k), v] } ]
     end
 
     def better_grade(a, b)
@@ -70,6 +84,10 @@ module LearningSuite
       else
         val
       end
+    end
+
+    def empty_to_nil(string)
+      string == '' ? nil : string
     end
 
     def curve_exam(exam_number, exams_fraction_of_score=0.6, exam_re=/Exam/i)
@@ -102,7 +120,7 @@ module LearningSuite
     # except those found as values in the date_to_assignment hash/file.
     def merge_iclicker!(iclicker_csv, date_to_assignment, default_points=nil)
       default = default_points
-      d_to_a = iclicker_date_to_assignment_hash(date_to_assignment)
+      date_to_assignment = iclicker_date_to_assignment_hash(date_to_assignment)
 
       # TODO: remove the default_if_gt_zero redundancy
 
@@ -112,34 +130,52 @@ module LearningSuite
       iclicker_rows.each do |row|
         student = students_by_netid[row[0]]
         if student
-          iclicker_dates.zip(row[2..-1]) do |date_string, grade|
-            grade = grade.to_f if grade
+          iclicker_dates.zip(row[2..-1]) do |date_string, igrade|
+            igrade = csv_to_f(igrade)
             date_obj = bad_date_string_to_date_obj(date_string)
-            assignment = d_to_a[date_obj]
+            assignment = date_to_assignment[date_obj]
             previous_grade = student.grades[assignment]
-            previous_grade = previous_grade.to_f if previous_grade
-            to_record = better_grade(previous_grade, default_if_gt_zero(grade, default))
+            to_record = better_grade(previous_grade, default_if_gt_zero(igrade, default))
             student.grades[assignment] = default_if_gt_zero(to_record, default)
           end
         end
       end
-      iclicker_assignments = Set.new(d_to_a.values)
+      iclicker_assignments = Set.new(date_to_assignment.values)
       students.each do |student|
         sgrades = student.grades
         sgrades.each do |k,v|
-          if iclicker_assignments.include?(k)
-            if v
-              sgrades[k] = default_if_gt_zero(v.to_f, default)
-            end
-          else
+          unless iclicker_assignments.include?(k)
             sgrades.delete(k) 
           end
         end
       end
+      remove_empty_assignments!
       self
     end
 
-    def write_file(outfile=OUTFILE)
+    def remove_empty_assignments!
+      ea = empty_assignments
+      students.each do |student|
+        sgrades = student.grades
+        ea.each do |empty_assign|
+          sgrades.delete empty_assign
+        end
+      end
+    end
+
+    # returns a Set of empty assignments (no students have scores)
+    def empty_assignments
+      assignment_to_scores = Hash.new {|h,k| h[k] = [] }
+      students.each do |student|
+        student.grades.each do |assignment, score|
+          assignment_to_scores[assignment] << score
+        end
+      end
+      a_to_s = Hash[ assignment_to_scores.map {|k,v| [k, v.compact] } ]
+      a_to_s.select {|k,v| v.size == 0 }.map(&:first)
+    end
+
+    def write_file(outfile=OUTFILE, no_empty_rows=true)
       CSV.open(outfile, 'w') do |csv|
         header = ["First Name", "Last Name", "Net ID"]
         csv << header.push(*@students.first.grades.keys)

@@ -16,6 +16,15 @@ module LearningSuite
         gb = LearningSuite::Gradebook.new(argv[0])
         gb.write_roster
       when :iclicker_to_gb
+        if argv.size == 1 && argv.first == 'AUTO'
+          candidates = Dir["*.csv"].select {|f| f =~ /\d{4}-\d{2}-\d{2}/ }
+          latest_gb_csv = candidates.sort_by {|f| f[/\d{4}-(\d{2}-\d{2})/, 1].split('-').join.to_i }.last
+          iclicker_grade_file = 'UploadFile.csv'
+          abort "couldn't find any gradebook export .csv files (need dddd-dd-dd in filename)" unless latest_gb_csv
+          abort "couldn't find #{iclicker_grade_file}" unless File.exist?(iclicker_grade_file)
+          abort "couldn't find date_to_assignment.yml" unless File.exist?("date_to_assignment.yml")
+          argv = [latest_gb_csv, iclicker_grade_file, "date_to_assignment.yml"]
+        end
         unless argv.size == 3
           parser.educate_with_subcommand && exit
         end
@@ -100,6 +109,9 @@ module LearningSuite
         when :iclicker_to_gb
           Trollop::Parser.new do
             banner "learning_suite.rb iclicker_to_gb <gb_grades>.csv <iclicker_export>.csv date_to_assignment.yml [OPTIONS]"
+            text "<or>"
+            text "learning_suite.rb iclicker_to_gb AUTO"
+            text "(requires one file named UploadFile.csv)"
             text "output: <gb_grades>#{LearningSuite::Commandline::ICLICKER_EXT}"
             opt :points_per_day, "number of points to grant", :default => 2.0
           end
